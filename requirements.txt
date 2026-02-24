@@ -1,0 +1,10 @@
+apache-airflow-providers-postgres==6.5.4
+apache-airflow-providers-amazon==9.21.0
+psycopg2-binary==2.9.11
+minio==7.2.20
+boto3==1.42.54
+pandas==2.2.1
+pyarrow==23.0.1
+pendulum==3.2.0
+faker==40.4.0
+great-expectations==1.12.3
