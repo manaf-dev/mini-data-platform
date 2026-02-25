@@ -1,0 +1,104 @@
+name: CD — Deploy & Health Check
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy Full Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Create .env from GitHub secrets (fallback to defaults)
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          POSTGRES_HOST=postgres
+          POSTGRES_PORT=5432
+          POSTGRES_USER=health
+          POSTGRES_PASSWORD=health_secret
+          POSTGRES_DB=healthdb
+          AIRFLOW_DB=airflow
+          AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfd33Q=
+          MINIO_ROOT_USER=minioadmin
+          MINIO_ROOT_PASSWORD=minioadmin123
+          MINIO_ENDPOINT=http://minio:9000
+          MINIO_ACCESS_KEY=minioadmin
+          MINIO_SECRET_KEY=minioadmin123
+          MINIO_BUCKET_BRONZE=healthcare-bronze
+          MINIO_BUCKET_SILVER=healthcare-silver
+          MB_DB_TYPE=postgres
+          MB_DB_DBNAME=metabase
+          MB_DB_PORT=5432
+          MB_DB_USER=health
+          MB_DB_PASS=health_secret
+          MB_DB_HOST=postgres
+          MB_ADMIN_EMAIL=admin@healthcare.local
+          MB_ADMIN_PASSWORD=admin1234!
+          _AIRFLOW_WWW_USER_USERNAME=admin
+          _AIRFLOW_WWW_USER_PASSWORD=admin
+          AIRFLOW_UID=50000
+          AIRFLOW_GID=0
+          EOF
+
+      # Build and start the platform 
+      - name: Build images
+        run: docker compose build --parallel
+
+      - name: Start platform
+        run: docker compose up -d
+
+      - name: Wait for services to initialise (90s)
+        run: sleep 90
+
+      # Health checks 
+      - name: Health check — PostgreSQL
+        run: |
+          docker compose exec -T postgres \
+            pg_isready -U health -d healthdb
+          echo "✓ PostgreSQL healthy"
+
+      - name: Health check — MinIO
+        run: |
+          curl --fail --silent --retry 5 --retry-delay 5 \
+            http://localhost:9000/minio/health/live
+          echo "✓ MinIO healthy"
+
+      - name: Health check — Airflow webserver
+        run: |
+          curl --fail --silent --retry 10 --retry-delay 10 \
+            http://localhost:8080/health \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          status = data.get('status', data.get('metadatabase', {}).get('status', ''))
+          if status not in ('healthy', 'ok'):
+              print('Airflow not healthy:', data)
+              sys.exit(1)
+          print('✓ Airflow healthy')
+          "
+
+      - name: Health check — Metabase
+        run: |
+          curl --fail --silent --retry 20 --retry-delay 15 \
+            http://localhost:3000/api/health \
+            | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          if data.get('status') != 'ok':
+              print('Metabase not healthy:', data)
+              sys.exit(1)
+          print('✓ Metabase healthy')
+          "
+
+      # Show final state
+      - name: Show running containers
+        if: always()
+        run: docker compose ps
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=40
