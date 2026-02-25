@@ -1,5 +1,6 @@
 """Configuration for healthcare data generation."""
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,10 +12,10 @@ class GeneratorConfig:
     """Configuration parameters for data generation."""
 
     # Volume settings
-    num_patients: int = 5000
-    num_visits: int = 15000
-    num_admissions: int = 3000
-    num_treatments: int = 25000
+    num_patients: int = os.getenv("NUM_PATIENTS", 5000)
+    num_visits: int = os.getenv("NUM_VISITS", 15000)
+    num_admissions: int = os.getenv("NUM_ADMISSIONS", 3000)
+    num_treatments: int = os.getenv("NUM_TREATMENTS", 25000)
 
     # Date range
     start_date: datetime = pendulum.parse("2023-01-01")
