@@ -11,21 +11,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 logger = logging.getLogger(__name__)
 
 
+def run_data_generator(**context):
+    """Generate partitioned raw CSV files before bronze ingestion."""
+    from src.data_generator.generator import main as generate_data
+
+    partition = context["data_interval_start"].replace(tzinfo=None).date()
+    logger.info("Data generation start | partition=%s", partition)
+    generate_data(for_date=partition)
+    logger.info("Data generation done | partition=%s", partition)
+
+
 def run_bronze_ingestion(**context):
     """
     Runs inside the Airflow container.
-    Assumes:
-      - ./data is available (we’ll mount it below)
-      - src package imports work (ensure __init__.py files exist)
-      - MINIO_* env vars available in Airflow container
     """
     from src.ingestion.bronze_ingestion import BronzeIngestion
 
     # Partition date: use DAG logical date
-    logical_date = context["logical_date"].to_datetime_string()
+    logical_date = context["data_interval_start"].replace(tzinfo=None).date()
     logger.info("Bronze ingestion start | logical_date=%s", logical_date)
 
-    ingestion = BronzeIngestion(source_dir="data/raw")
+    ingestion = BronzeIngestion()
     results = ingestion.ingest_all(partition_date=context["logical_date"])
     ok = ingestion.verify_ingestion(partition_date=context["logical_date"])
 
@@ -42,9 +48,14 @@ with DAG(
     catchup=False,
     tags=["healthcare", "bronze"],
 ) as dag:
+    data_generator = PythonOperator(
+        task_id="generate_raw_data",
+        python_callable=run_data_generator,
+    )
+
     bronze_ingestion = PythonOperator(
         task_id="bronze_ingestion",
         python_callable=run_bronze_ingestion,
     )
 
-    bronze_ingestion
+    data_generator >> bronze_ingestion

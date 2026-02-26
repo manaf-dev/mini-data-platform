@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def _partition_date(context: dict) -> datetime:
     """Return the DAG logical date as a plain datetime (no timezone)."""
-    return context["logical_date"].replace(tzinfo=None)
+    return context["data_interval_start"].replace(tzinfo=None)
 
 
 def run_patients_silver(**context):

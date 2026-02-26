@@ -4,6 +4,9 @@ Master DAG: Healthcare Full Pipeline
 Runs daily at midnight (00:00 UTC) and executes all three
 pipeline stages in strict dependency order:
 
+  generate_raw_data
+       |
+       v
   bronze_ingestion
        |
        v
@@ -40,17 +43,30 @@ logger = logging.getLogger(__name__)
 
 def _partition_date(context: dict) -> datetime:
     """Return logical_date as a timezone-naive datetime for partition paths."""
-    return context["logical_date"].replace(tzinfo=None)
+    return context["data_interval_start"].replace(tzinfo=None)
 
 
 # Stage 1: Bronze
+def run_data_generator(**context):
+    """Generate partitioned raw CSV files used by bronze ingestion."""
+    from src.data_generator.generator import main as generate_data
+
+    partition = _partition_date(context).date()
+    logger.info("[master] Stage 0 - Data generation | partition=%s", partition)
+    generate_data(for_date=partition)
+    logger.info("[master] Data generation complete | partition=%s", partition)
+
+
 def run_bronze(**context):
+    """
+    Loads raw CSV files into MinIO.
+    """
     from src.ingestion.bronze_ingestion import BronzeIngestion
 
     partition = _partition_date(context)
     logger.info("[master] Stage 1 — Bronze ingestion | partition=%s", partition.date())
 
-    ingestion = BronzeIngestion(source_dir="data/raw")
+    ingestion = BronzeIngestion()
     results = ingestion.ingest_all(partition_date=partition)
 
     ok = ingestion.verify_ingestion(partition_date=partition)
@@ -234,6 +250,12 @@ with DAG(
         "email_on_failure": False,
     },
 ) as dag:
+    t_generate = PythonOperator(
+        task_id="generate_raw_data",
+        python_callable=run_data_generator,
+        doc_md="Generate partitioned synthetic CSVs in data/raw/YYYY/MM/DD/",
+    )
+
     t_bronze = PythonOperator(
         task_id="bronze_ingestion",
         python_callable=run_bronze,
@@ -268,4 +290,4 @@ with DAG(
     )
 
     # Strict linear dependency - each stage must succeed before the next begins
-    t_bronze >> t_silver >> t_gold >> t_summary
+    t_generate >> t_bronze >> t_silver >> t_gold >> t_summary
