@@ -1,7 +1,7 @@
 """Healthcare synthetic data generator with intentional data quality issues."""
 
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Dict
 
@@ -18,17 +18,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def partition_path(path, for_date: date) -> Path:
+    """Return  data/raw/YYYY/MM/DD/  for the given date."""
+    return (
+        path / f"{for_date.year:04d}" / f"{for_date.month:02d}" / f"{for_date.day:02d}"
+    )
+
+
 class HealthcareDataGenerator:
     """Generate synthetic healthcare operational data with realistic quality issues."""
 
-    def __init__(self, config: GeneratorConfig):
+    def __init__(self, config: GeneratorConfig, for_date: date):
         self.config = config
         self.fake = Faker()
         Faker.seed(config.random_seed)
         np.random.seed(config.random_seed)
-
-        self.output_path = Path(config.output_dir)
-        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.for_date = for_date
+        self.output_dir = partition_path(Path(config.output_dir), self.for_date)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Store generated data for relationships
         self.patients_df = None
@@ -487,7 +494,7 @@ class HealthcareDataGenerator:
     def save_to_csv(self, datasets: Dict[str, pd.DataFrame]) -> None:
         """Save all datasets to CSV files."""
         for name, df in datasets.items():
-            filepath = self.output_path / f"{name}.csv"
+            filepath = self.output_dir / f"{name}.csv"
             df.to_csv(filepath, index=False)
             logger.info(f"Saved {len(df)} records to {filepath}")
 
@@ -510,29 +517,32 @@ class HealthcareDataGenerator:
         return random_date.set(hour=hour, minute=minute, second=0)
 
 
-def main():
+def main(for_date: date):
     """Main execution function."""
+    logger.info("Generating data for partition: %s", for_date)
+
     config = GeneratorConfig()
-    generator = HealthcareDataGenerator(config)
+    generator = HealthcareDataGenerator(config, for_date)
+    logger.info("Output directory: %s", generator.output_dir)
 
     datasets = generator.generate_all()
     generator.save_to_csv(datasets)
 
-    # Print summary statistics
-    print("\n" + "=" * 60)
-    print("HEALTHCARE DATA GENERATION SUMMARY")
-    print("=" * 60)
+    # Log summary statistics
+    logger.info("=" * 60)
+    logger.info("HEALTHCARE DATA GENERATION SUMMARY")
+    logger.info("=" * 60)
     for name, df in datasets.items():
-        print(f"{name:15s}: {len(df):,} records")
-    print("=" * 60)
-    print("\nData quality issues injected for validation testing:")
-    print("  - Missing values in required fields")
-    print("  - Duplicate records")
-    print("  - Invalid foreign keys")
-    print("  - Negative amounts")
-    print("  - Logical inconsistencies (dates)")
-    print("  - Invalid enum values")
-    print("=" * 60)
+        logger.info("%-15s: %s records", name, format(len(df), ","))
+    logger.info("=" * 60)
+    logger.info("Data quality issues injected for validation testing:")
+    logger.info("  - Missing values in required fields")
+    logger.info("  - Duplicate records")
+    logger.info("  - Invalid foreign keys")
+    logger.info("  - Negative amounts")
+    logger.info("  - Logical inconsistencies (dates)")
+    logger.info("  - Invalid enum values")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
