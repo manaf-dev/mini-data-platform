@@ -35,6 +35,8 @@ jobs:
           MINIO_SECRET_KEY=minioadmin123
           MINIO_BUCKET_BRONZE=healthcare-bronze
           MINIO_BUCKET_SILVER=healthcare-silver
+          MINIO_BUCKET_QUARANTINE=healthcare-quarantine
+          MINIO_BUCKET_REPORTS=healthcare-reports
           MB_DB_TYPE=postgres
           MB_DB_DBNAME=metabase
           MB_DB_PORT=5432
