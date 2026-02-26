@@ -64,7 +64,7 @@ jobs:
       # STEP 1: Generate sample CSVs
       - name: Generate sample healthcare CSVs
         run: |
-          docker compose exec -T airflow-scheduler \
+          docker compose exec -T --user root airflow-scheduler \
             python /opt/airflow/src/data_generator/main.py
           echo "✓ Sample CSVs generated"
 
