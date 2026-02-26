@@ -34,8 +34,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare compose env file
+        run: |
+          cp .env.example .env
+          cat >> .env << 'EOF'
+          NUM_PATIENTS=100
+          NUM_VISITS=300
+          NUM_ADMISSIONS=60
+          NUM_TREATMENTS=500
+          AIRFLOW_UID=50000
+          AIRFLOW_GID=0
+          MINIO_BUCKET_BRONZE=healthcare-bronze
+          MINIO_BUCKET_SILVER=healthcare-silver
+          MINIO_BUCKET_QUARANTINE=healthcare-quarantine
+          MINIO_BUCKET_REPORTS=healthcare-reports
+          EOF
+
       - name: Check compose file is valid
-        run: docker compose --env-file .env.example config --quiet
+        run: docker compose --env-file .env config --quiet
 
   # Build custom Docker images
   build-images:
