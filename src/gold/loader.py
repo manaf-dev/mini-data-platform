@@ -15,7 +15,7 @@ import pandas as pd
 import psycopg2.extras
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from gold.base import GoldLoader
+from gold.base import GoldLoader  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

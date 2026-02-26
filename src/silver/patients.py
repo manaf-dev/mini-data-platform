@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import pandas as pd
+import pandas as pd  # noqa: E402
 
-from silver.base import SilverCleaner
+from silver.base import SilverCleaner  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

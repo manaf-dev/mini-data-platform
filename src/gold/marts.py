@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from gold.base import _pg_conn
+from gold.base import _pg_conn  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

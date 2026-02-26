@@ -9,7 +9,7 @@ from typing import Tuple
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from silver.base import SilverCleaner
+from silver.base import SilverCleaner  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

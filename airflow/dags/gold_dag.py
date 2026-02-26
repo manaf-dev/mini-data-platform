@@ -22,9 +22,7 @@ from pathlib import Path
 from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from airflow import DAG
-
-sys.path.insert(0, "/opt/airflow/src")
+from airflow import DAG  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
