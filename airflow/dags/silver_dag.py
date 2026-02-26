@@ -69,27 +69,33 @@ def run_billing_silver(**context):
 
 
 def log_silver_summary(**context):
-    """Pull all stats from XCom and print a clean summary table."""
+    """Pull all stats from XCom and log a clean summary table."""
     ti = context["task_instance"]
     datasets = ["patients", "visits", "admissions", "treatments", "billing"]
 
-    print("\n" + "=" * 65)
-    print(f"  SILVER PIPELINE SUMMARY  |  partition={_partition_date(context).date()}")
-    print("=" * 65)
-    print(f"  {'Dataset':<15} {'Total':>8} {'Clean':>8} {'Rejected':>8} {'Rej%':>7}")
-    print("  " + "-" * 50)
+    logger.info("=" * 65)
+    logger.info(
+        "  SILVER PIPELINE SUMMARY  |  partition=%s",
+        _partition_date(context).date(),
+    )
+    logger.info("=" * 65)
+    logger.info(
+        "  %-15s %8s %8s %8s %7s", "Dataset", "Total", "Clean", "Rejected", "Rej%"
+    )
+    logger.info("  %s", "-" * 50)
 
     for ds in datasets:
         stats = ti.xcom_pull(key=f"{ds}_stats", task_ids=f"silver_{ds}")
         if stats:
-            print(
-                f"  {stats['dataset']:<15} "
-                f"{stats['total']:>8,} "
-                f"{stats['clean']:>8,} "
-                f"{stats['rejected']:>8,} "
-                f"{stats['rejection_rate_pct']:>6.1f}%"
+            logger.info(
+                "  %-15s %8s %8s %8s %6.1f%%",
+                stats["dataset"],
+                format(stats["total"], ","),
+                format(stats["clean"], ","),
+                format(stats["rejected"], ","),
+                stats["rejection_rate_pct"],
             )
-    print("=" * 65 + "\n")
+    logger.info("=" * 65)
 
 
 # DAG definition

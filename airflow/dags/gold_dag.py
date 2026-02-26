@@ -21,8 +21,9 @@ from pathlib import Path
 
 from airflow.operators.python import PythonOperator
 
+from airflow import DAG
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from airflow import DAG  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -83,22 +84,29 @@ def log_gold_summary(**context):
     ti = context["task_instance"]
     datasets = ["patients", "visits", "admissions", "treatments", "billing"]
 
-    print("\n" + "=" * 55)
-    print(f"  GOLD PIPELINE SUMMARY  |  partition={_partition_date(context).date()}")
-    print("=" * 55)
-    print(f"  {'Dataset':<15} {'Rows Upserted':>14}")
-    print("  " + "-" * 35)
+    logger.info("=" * 55)
+    logger.info(
+        "  GOLD PIPELINE SUMMARY  |  partition=%s",
+        _partition_date(context).date(),
+    )
+    logger.info("=" * 55)
+    logger.info("  %-15s %14s", "Dataset", "Rows Upserted")
+    logger.info("  %s", "-" * 35)
     for ds in datasets:
         stats = ti.xcom_pull(key=f"{ds}_gold", task_ids=f"load_{ds}")
         if stats:
-            print(f"  {stats['dataset']:<15} {stats['upserted']:>14,}")
+            logger.info(
+                "  %-15s %14s",
+                stats["dataset"],
+                format(stats["upserted"], ","),
+            )
 
-    print("\n  Marts rebuilt:")
+    logger.info("  Marts rebuilt:")
     mart_results = ti.xcom_pull(key="mart_results", task_ids="build_marts")
     if mart_results:
         for mart, count in mart_results.items():
-            print(f"    • {mart:<28} {count:>8,} rows")
-    print("=" * 55 + "\n")
+            logger.info("    - %-28s %8s rows", mart, format(count, ","))
+    logger.info("=" * 55)
 
 
 # DAG
