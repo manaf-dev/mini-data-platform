@@ -31,6 +31,3 @@ src/generator/output/
 logs/
 *.log
 
-# Screenshots — add manually
-docs/screenshots/*.png
-!docs/screenshots/.gitkeeps
