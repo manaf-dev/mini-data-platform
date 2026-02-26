@@ -35,6 +35,11 @@ x-airflow-common:
     MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    # config
+    NUM_PATIENTS: ${NUM_PATIENTS}
+    NUM_VISITS: ${NUM_VISITS}
+    NUM_ADMISSIONS: ${NUM_ADMISSIONS}
+    NUM_TREATMENTS: ${NUM_TREATMENTS}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
@@ -180,8 +185,12 @@ services:
         mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
         mc mb --ignore-existing local/${MINIO_BUCKET_BRONZE} &&
         mc mb --ignore-existing local/${MINIO_BUCKET_SILVER} &&
+        mc mb --ignore-existing local/${MINIO_BUCKET_QUARANTINE}/clean &&
+        mc mb --ignore-existing local/${MINIO_BUCKET_REPORTS}/rejected &&
         mc anonymous set download local/${MINIO_BUCKET_BRONZE} &&
         mc anonymous set download local/${MINIO_BUCKET_SILVER} &&
+        mc anonymous set download local/${MINIO_BUCKET_QUARANTINE}/clean &&
+        mc anonymous set download local/${MINIO_BUCKET_REPORTS}/rejected &&
         exit 0
       "
     networks:

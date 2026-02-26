@@ -9,7 +9,7 @@ from typing import Dict
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.minio_client import MinIOClient
+from utils.minio_client import MinIOClient  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -18,16 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 class BronzeIngestion:
-    """Handle ingestion of raw CSV files to bronze layer."""
+    """Uploads one day's raw CSVs from the local date-partitioned folder
+    into MinIO healthcare-bronze, preserving the same partition structure.
 
-    def __init__(self, source_dir: str = "data/raw"):
+    Source:  data/raw/YYYY/MM/DD/{dataset}.csv
+    Dest:    healthcare-bronze/{dataset}/YYYY/MM/DD/{dataset}.csv
+
+    uploading the same date twice overwrites the same object.
+    """
+
+    def __init__(self):
         """
         Initialize bronze ingestion.
 
-        Args:
-            source_dir: Directory containing raw CSV files
         """
-        self.source_dir = Path(source_dir)
         self.minio_client = MinIOClient()
 
         # Dataset configuration
@@ -46,6 +50,13 @@ class BronzeIngestion:
         if partition_date is None:
             partition_date = datetime.now()
 
+        source_dir = (
+            Path("data/raw")
+            / f"{partition_date.year:04d}"
+            / f"{partition_date.month:02d}"
+            / f"{partition_date.day:02d}"
+        )
+
         logger.info(
             f"Starting bronze layer ingestion for date: {partition_date.date()}"
         )
@@ -53,7 +64,7 @@ class BronzeIngestion:
         results = {}
 
         for dataset in self.datasets:
-            csv_file = self.source_dir / f"{dataset}.csv"
+            csv_file = source_dir / f"{dataset}.csv"
 
             if not csv_file.exists():
                 logger.warning(f"CSV file not found: {csv_file}")
@@ -124,20 +135,20 @@ def main():
     # Ingest all datasets
     results = ingestion.ingest_all()
 
-    # Print summary
-    print("\n" + "=" * 60)
-    print("BRONZE LAYER INGESTION SUMMARY")
-    print("=" * 60)
+    # Log summary
+    logger.info("=" * 60)
+    logger.info("BRONZE LAYER INGESTION SUMMARY")
+    logger.info("=" * 60)
     for dataset, path in results.items():
-        print(f"{dataset:15s}: {path}")
-    print("=" * 60)
+        logger.info("%-15s: %s", dataset, path)
+    logger.info("=" * 60)
 
     # Verify ingestion
     if ingestion.verify_ingestion():
-        print("\n✓ All datasets successfully ingested to bronze layer")
+        logger.info("All datasets successfully ingested to bronze layer")
         return 0
     else:
-        print("\n✗ Some datasets missing from bronze layer")
+        logger.error("Some datasets missing from bronze layer")
         return 1
 
 
