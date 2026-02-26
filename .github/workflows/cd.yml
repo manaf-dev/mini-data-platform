@@ -18,23 +18,25 @@ jobs:
           cat > .env << EOF
           POSTGRES_HOST=postgres
           POSTGRES_PORT=5432
-          POSTGRES_USER=health
-          POSTGRES_PASSWORD=health_secret
-          POSTGRES_DB=healthdb
+          POSTGRES_USER=healthcare_admin
+          POSTGRES_PASSWORD=healthcare_secret
+          POSTGRES_DB=healthcare_analytics
           AIRFLOW_DB=airflow
           AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfd33Q=
           MINIO_ROOT_USER=minioadmin
           MINIO_ROOT_PASSWORD=minioadmin123
-          MINIO_ENDPOINT=http://minio:9000
+          MINIO_ENDPOINT=minio:9000
           MINIO_ACCESS_KEY=minioadmin
           MINIO_SECRET_KEY=minioadmin123
           MINIO_BUCKET_BRONZE=healthcare-bronze
           MINIO_BUCKET_SILVER=healthcare-silver
+          MINIO_BUCKET_QUARANTINE=healthcare-quarantine
+          MINIO_BUCKET_REPORTS=healthcare-reports
           MB_DB_TYPE=postgres
           MB_DB_DBNAME=metabase
           MB_DB_PORT=5432
-          MB_DB_USER=health
-          MB_DB_PASS=health_secret
+          MB_DB_USER=healthcare_admin
+          MB_DB_PASS=healthcare_secret
           MB_DB_HOST=postgres
           MB_ADMIN_EMAIL=admin@healthcare.local
           MB_ADMIN_PASSWORD=admin1234!
@@ -58,7 +60,7 @@ jobs:
       - name: Health check — PostgreSQL
         run: |
           docker compose exec -T postgres \
-            pg_isready -U health -d healthdb
+            pg_isready -U healthcare_admin -d healthcare_analytics
           echo "✓ PostgreSQL healthy"
 
       - name: Health check — MinIO
