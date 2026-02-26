@@ -11,80 +11,7 @@ The platform was built as a demonstration of modern data engineering principles 
 
 ## Architecture
 
-```
-+---------------------+
-|   Data Generator    |
-|   (Python / CLI)    |
-|                     |
-|  5 CSV datasets     |
-|  written to         |
-|  data/raw/          |
-|  YYYY/MM/DD/        |
-+--------+------------+
-         |
-         v
-+--------+-----------------------------------------------------------+
-|                       Apache Airflow                               |
-|   healthcare_master_pipeline  (0 0 * * *  — midnight UTC)         |
-|                                                                    |
-|   generate_raw_data                                                |
-|        |                                                           |
-|   bronze_ingestion                                                 |
-|        |                                                           |
-|   silver_patients ──> silver_visits                                |
-|                            |                                       |
-|               +------------+------------+                          |
-|               |            |            |                          |
-|   silver_admissions  silver_treatments  silver_billing             |
-|               |            |            |                          |
-|               +------------+------------+                          |
-|                            |                                       |
-|                      silver_summary                                |
-|                            |                                       |
-|                      load_patients ──> load_visits                 |
-|                                            |                       |
-|                            +---------------+---------------+       |
-|                            |               |               |       |
-|                    load_admissions  load_treatments  load_billing   |
-|                            |               |               |       |
-|                            +---------------+---------------+       |
-|                                            |                       |
-|                                       build_marts                  |
-|                                            |                       |
-|                                       gold_summary                 |
-|                                            |                       |
-|                                     pipeline_summary               |
-+-----------------------------+--------------------------------------+
-                              |
-          +-------------------+-------------------+
-          |                                       |
-+---------+---------+               +-------------+-----------+
-|       MinIO        |               |       PostgreSQL         |
-|  (Object Storage)  |               |  healthcare_analytics    |
-|                    |               |                          |
-|  healthcare-bronze |               |  patients                |
-|  {ds}/YYYY/MM/DD/  |               |  visits                  |
-|  raw CSVs          |               |  admissions              |
-|                    |               |  treatments              |
-|  healthcare-silver |               |  billing                 |
-|  {ds}/YYYY/MM/DD/  |               |                          |
-|  clean rows only   |               |  mart_daily_kpis         |
-|                    |               |  mart_department_stats   |
-|  rejected/{ds}/    |               |  mart_patient_stats      |
-|  YYYY/MM/DD/       |               |                          |
-|  bad rows +        |               +-------------+-----------+
-|  reject reason     |                             |
-+--------------------+                             v
-                                      +------------+------------+
-                                      |         Metabase         |
-                                      |      localhost:3000       |
-                                      |                           |
-                                      |  Executive Overview       |
-                                      |  Department Operations    |
-                                      |  Financial Summary        |
-                                      |  Patient Analytics        |
-                                      +---------------------------+
-```
+![Platform Architecture](screenshots/project_architecture.png)
 
 ### Data flow
 
@@ -247,9 +174,9 @@ Expected output:
 ```
 NAME                 STATUS
 postgres             Up (healthy)
-airflow-init         Exited (0)      ← correct — one-shot init container
+airflow-init         Exited (0)      — one-shot init container
 minio                Up (healthy)
-minio-init           Exited (0)      ← correct — one-shot bucket bootstrap
+minio-init           Exited (0)      — one-shot bucket bootstrap
 airflow-webserver    Up (healthy)
 airflow-scheduler    Up (healthy)
 metabase             Up (healthy)
