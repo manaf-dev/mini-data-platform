@@ -27,7 +27,10 @@ class GeneratorConfig:
     payment_completion_rate: float = 0.85  # 85% of bills paid
 
     # Output settings
-    output_dir: str = "data/raw"
+    output_dir: str = os.getenv(
+        "DATA_OUTPUT_DIR",
+        "/opt/airflow/data/raw" if os.path.isdir("/opt/airflow/data") else "data/raw",
+    )
 
     # Seed for reproducibility
     random_seed: int = 42
