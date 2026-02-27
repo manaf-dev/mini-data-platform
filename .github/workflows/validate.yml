@@ -49,10 +49,10 @@ jobs:
           _AIRFLOW_WWW_USER_PASSWORD=admin
           AIRFLOW_UID=50000
           AIRFLOW_GID=0
-          NUM_PATIENTS=50
-          NUM_VISITS=150
-          NUM_ADMISSIONS=30
-          NUM_TREATMENTS=250
+          NUM_PATIENTS=1000
+          NUM_VISITS=3000
+          NUM_ADMISSIONS=600
+          NUM_TREATMENTS=5000
           EOF
 
       - name: Start platform
