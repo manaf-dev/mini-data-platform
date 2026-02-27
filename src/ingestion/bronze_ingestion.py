@@ -120,7 +120,7 @@ class BronzeIngestion:
             )
 
             if objects:
-                logger.info(f"✓ {dataset}: {len(objects)} file(s) found")
+                logger.info(f"{dataset}: {len(objects)} file(s) found")
             else:
                 logger.error(f"✗ {dataset}: No files found")
                 all_present = False
@@ -130,7 +130,7 @@ class BronzeIngestion:
 
 def main():
     """Main execution function."""
-    ingestion = BronzeIngestion(source_dir="data/raw")
+    ingestion = BronzeIngestion()
 
     # Ingest all datasets
     results = ingestion.ingest_all()
