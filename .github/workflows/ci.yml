@@ -10,6 +10,8 @@ jobs:
   quality-gates:
     name: Lint + Schema + Unit Tests
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
 
