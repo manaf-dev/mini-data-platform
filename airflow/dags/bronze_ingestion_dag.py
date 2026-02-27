@@ -11,11 +11,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 logger = logging.getLogger(__name__)
 
 
+def _partition_date(**context):
+    return context["data_interval_start"].replace(tzinfo=None).date()
+
+
 def run_data_generator(**context):
     """Generate partitioned raw CSV files before bronze ingestion."""
     from src.data_generator.generator import main as generate_data
 
-    partition = context["data_interval_start"].replace(tzinfo=None).date()
+    partition = _partition_date(context)
     logger.info("Data generation start | partition=%s", partition)
     generate_data(for_date=partition)
     logger.info("Data generation done | partition=%s", partition)
@@ -28,7 +32,7 @@ def run_bronze_ingestion(**context):
     from src.ingestion.bronze_ingestion import BronzeIngestion
 
     # Partition date: use DAG logical date
-    logical_date = context["data_interval_start"].replace(tzinfo=None).date()
+    logical_date = _partition_date(context)
     logger.info("Bronze ingestion start | logical_date=%s", logical_date)
 
     ingestion = BronzeIngestion()

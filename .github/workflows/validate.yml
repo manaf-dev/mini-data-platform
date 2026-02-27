@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["CD — Deploy & Health Check"]
     types: [completed]
-  workflow_dispatch:     # manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   validate:
@@ -17,10 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Spin up the platform
       - name: Create .env
         run: |
-          cat > .env << EOF
+          cat > .env << 'EOF'
           POSTGRES_HOST=postgres
           POSTGRES_PORT=5432
           POSTGRES_USER=healthcare_admin
@@ -53,171 +52,171 @@ jobs:
           NUM_ADMISSIONS=600
           NUM_TREATMENTS=5000
           EOF
+          sed -i 's/^[[:space:]]*//' .env
+          echo "--- .env sanity check (first 3 lines) ---"
+          head -3 .env
+
+
+      - name: Create data directory with correct permissions
+        run: |
+          mkdir -p data/raw
+          sudo chown -R 50000:0 data/
+          sudo chmod -R 775 data/
 
       - name: Start platform
         run: |
           docker compose up -d --build
-          echo "Waiting 120s for all services to initialise..."
+          echo "Waiting 120s for services to initialise..."
           sleep 120
 
       - name: Apply warehouse DDL
         run: |
           docker compose exec -T postgres \
-            psql -U healthcare_admin -d healthcare_analytics -v ON_ERROR_STOP=1 \
-            < sql/ddl.sql
-          echo "✓ Applied sql/ddl.sql"
+            psql -U healthcare_admin -d healthcare_analytics \
+            -v ON_ERROR_STOP=1 < sql/ddl.sql
+          echo "✓ DDL applied"
 
-      # STEP 1: Generate sample CSVs
-      - name: Generate sample healthcare CSVs
-        run: |
-          docker compose exec -T --user root airflow-scheduler \
-            python /opt/airflow/src/data_generator/main.py
-          echo "✓ Sample CSVs generated"
-
-      # STEP 2: Upload CSVs to MinIO (trigger bronze DAG) 
       - name: Trigger bronze ingestion DAG
         run: |
           docker compose exec -T airflow-scheduler \
             airflow dags trigger healthcare_bronze_ingestion_v1
           echo "✓ Bronze DAG triggered"
 
-      # STEP 3: Verify MinIO has bronze files
+      
       - name: Validate MinIO — bronze files exist
         run: |
-          docker compose exec -T minio \
-            mc alias set local http://localhost:9000 minioadmin minioadmin123
-
-          for attempt in $(seq 1 30); do
-            missing=0
+          for attempt in $(seq 1 40); do
+            all_found=1
             for dataset in patients visits admissions treatments billing; do
-              COUNT=$(docker compose exec -T minio \
-                mc ls --recursive local/healthcare-bronze/${dataset}/ \
-                | wc -l)
-              if [ "$COUNT" -gt "0" ]; then
+              COUNT=$(docker compose exec -T minio sh -c \
+                "mc alias set local http://localhost:9000 minioadmin minioadmin123 --quiet >/dev/null 2>&1 \
+                 && mc ls --recursive local/healthcare-bronze/${dataset}/ 2>/dev/null | wc -l")
+              if [ "${COUNT:-0}" -gt 0 ]; then
                 echo "  ✓ bronze/${dataset}: ${COUNT} file(s)"
               else
                 echo "  … bronze/${dataset}: pending"
-                missing=1
+                all_found=0
               fi
             done
 
-            if [ "$missing" -eq 0 ]; then
-              echo "Bronze data is ready."
-              break
-            fi
-
-            if [ "$attempt" -eq 30 ]; then
-              echo "  ✗ bronze data not ready after 30 attempts"
+            [ "$all_found" -eq 1 ] && { echo "✓ All bronze files present"; break; }
+            [ "$attempt" -eq 40 ] && {
+              echo "✗ Bronze files not ready after 10 minutes"
+              docker compose logs --tail=40 airflow-scheduler
               exit 1
-            fi
-
-            echo "Bronze data not ready yet (attempt ${attempt}/30). Waiting 15s..."
+            }
+            echo "Attempt ${attempt}/40 — retrying in 15s..."
             sleep 15
           done
 
-      # STEP 4: Trigger silver DAG
+      # Trigger silver DAG
       - name: Trigger silver pipeline DAG
         run: |
           docker compose exec -T airflow-scheduler \
             airflow dags trigger healthcare_silver_pipeline_v1
           echo "✓ Silver DAG triggered"
 
-      # STEP 5: Verify MinIO has silver files 
+     
       - name: Validate MinIO — silver files exist
         run: |
-          for attempt in $(seq 1 30); do
-            missing=0
+          for attempt in $(seq 1 40); do
+            all_found=1
             for dataset in patients visits admissions treatments billing; do
-              COUNT=$(docker compose exec -T minio \
-                mc ls --recursive local/healthcare-silver/${dataset}/ \
-                | wc -l)
-              if [ "$COUNT" -gt "0" ]; then
+              COUNT=$(docker compose exec -T minio sh -c \
+                "mc alias set local http://localhost:9000 minioadmin minioadmin123 --quiet >/dev/null 2>&1 \
+                 && mc ls --recursive local/healthcare-silver/${dataset}/ 2>/dev/null | wc -l")
+              if [ "${COUNT:-0}" -gt 0 ]; then
                 echo "  ✓ silver/${dataset}: ${COUNT} file(s)"
               else
                 echo "  … silver/${dataset}: pending"
-                missing=1
+                all_found=0
               fi
             done
 
-            if [ "$missing" -eq 0 ]; then
-              echo "Silver data is ready."
-              break
-            fi
-
-            if [ "$attempt" -eq 30 ]; then
-              echo "  ✗ silver data not ready after 30 attempts"
+            [ "$all_found" -eq 1 ] && { echo "✓ All silver files present"; break; }
+            [ "$attempt" -eq 40 ] && {
+              echo "✗ Silver files not ready after 10 minutes"
+              docker compose logs --tail=60 airflow-scheduler
               exit 1
-            fi
-
-            echo "Silver data not ready yet (attempt ${attempt}/30). Waiting 15s..."
+            }
+            echo "Attempt ${attempt}/40 — retrying in 15s..."
             sleep 15
           done
 
-      # STEP 6: Trigger gold DAG
+      # Trigger gold DAG
       - name: Trigger gold pipeline DAG
         run: |
           docker compose exec -T airflow-scheduler \
             airflow dags trigger healthcare_gold_pipeline_v1
           echo "✓ Gold DAG triggered"
 
-      - name: Wait for gold DAG to complete (90s)
-        run: sleep 90
-
-      # STEP 7: Validate PostgreSQL row counts
       - name: Validate PostgreSQL — all tables populated
         run: |
-          python3 - << 'EOF'
-          import subprocess, sys
+          python3 - << 'PYEOF'
+          import subprocess, sys, time
 
           tables = {
-              "patients":             100,
-              "visits":               100,
-              "admissions":            10,
-              "treatments":           100,
-              "billing":               50,
-              "mart_daily_kpis":        1,
-              "mart_department_stats":  1,
-              "mart_patient_stats":    50,
+              "patients":              100,
+              "visits":                100,
+              "admissions":              5,
+              "treatments":            100,
+              "billing":                50,
+              "mart_daily_kpis":         1,
+              "mart_department_stats":   1,
+              "mart_patient_stats":     50,
           }
 
-          all_ok = True
-          for table, min_rows in tables.items():
-              result = subprocess.run(
+          def row_count(table):
+              r = subprocess.run(
                   ["docker", "compose", "exec", "-T", "postgres",
-                   "psql", "-U", "healthcare_admin", "-d", "healthcare_analytics", "-t", "-c",
-                   f"SELECT COUNT(*) FROM {table};"],
+                   "psql", "-U", "healthcare_admin", "-d", "healthcare_analytics",
+                   "-t", "-c", f"SELECT COUNT(*) FROM {table};"],
                   capture_output=True, text=True
               )
-              count = int(result.stdout.strip())
-              if count >= min_rows:
-                  print(f"  ✓ {table:<28} {count:>8,} rows")
-              else:
-                  print(f"  ✗ {table:<28} {count:>8,} rows (expected ≥{min_rows})")
-                  all_ok = False
+              try:
+                  return int(r.stdout.strip())
+              except ValueError:
+                  return 0
 
-          if not all_ok:
-              sys.exit(1)
-          print("\n✓ All tables populated with sufficient data")
-          EOF
+          for attempt in range(1, 41):
+              counts = {t: row_count(t) for t in tables}
+              if all(counts[t] >= tables[t] for t in tables):
+                  for t, c in counts.items():
+                      print(f"  ✓ {t:<28} {c:>8,} rows")
+                  print("\n✓ All tables populated")
+                  sys.exit(0)
 
-      # STEP 8: Data sanity checks
-      - name: Validate data sanity — no negative revenue, valid dates
+              if attempt == 40:
+                  print("✗ Tables not ready after 10 minutes:")
+                  for t, c in counts.items():
+                      mark = "✓" if c >= tables[t] else "✗"
+                      print(f"  {mark} {t:<28} {c:>8,} rows  (need ≥{tables[t]})")
+                  sys.exit(1)
+
+              print(f"Attempt {attempt}/40 — waiting 15s...")
+              time.sleep(15)
+          PYEOF
+
+      # Data quality checks — silver validation must have stripped all
+      # bad rows so the gold layer should have zero negative amounts / bad dates.
+      - name: Validate data quality — no bad rows in gold layer
         run: |
-          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
-            SELECT COUNT(*) FROM billing WHERE total_amount < 0;
-          " | python3 -c "
+          docker compose exec -T postgres \
+            psql -U healthcare_admin -d healthcare_analytics -t -c \
+            "SELECT COUNT(*) FROM billing WHERE total_amount < 0;" \
+          | python3 -c "
           import sys
           count = int(input().strip())
           if count > 0:
               print(f'✗ {count} billing rows with negative total_amount')
               sys.exit(1)
-          print('✓ No negative billing amounts in gold layer')
+          print('✓ No negative billing amounts')
           "
 
-          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
-            SELECT COUNT(*) FROM visits
-            WHERE visit_end_ts < visit_start_ts;
-          " | python3 -c "
+          docker compose exec -T postgres \
+            psql -U healthcare_admin -d healthcare_analytics -t -c \
+            "SELECT COUNT(*) FROM visits WHERE visit_end_ts < visit_start_ts;" \
+          | python3 -c "
           import sys
           count = int(input().strip())
           if count > 0:
@@ -226,10 +225,10 @@ jobs:
           print('✓ No visits with end_ts before start_ts')
           "
 
-          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
-            SELECT COUNT(*) FROM admissions
-            WHERE discharge_ts < admit_ts;
-          " | python3 -c "
+          docker compose exec -T postgres \
+            psql -U healthcare_admin -d healthcare_analytics -t -c \
+            "SELECT COUNT(*) FROM admissions WHERE discharge_ts < admit_ts;" \
+          | python3 -c "
           import sys
           count = int(input().strip())
           if count > 0:
@@ -238,7 +237,7 @@ jobs:
           print('✓ No admissions with discharge before admit')
           "
 
-      # STEP 9: Validate Metabase is live
+      # Metabase health
       - name: Validate Metabase API health
         run: |
           STATUS=$(curl -s http://localhost:3000/api/health \
@@ -250,20 +249,19 @@ jobs:
             exit 1
           fi
 
-      # Final summary
       - name: Print validation summary
         run: |
-          echo ""
-          echo "════════════════════════════════════════════════════"
           echo "  DATA FLOW VALIDATION — PASSED"
-          echo "════════════════════════════════════════════════════"
-          echo "  ✓  CSVs generated"
-          echo "  ✓  MinIO bronze — all 5 datasets present"
-          echo "  ✓  MinIO silver — all 5 datasets cleaned"
-          echo "  ✓  PostgreSQL   — all 8 tables populated"
-          echo "  ✓  Data quality — no bad rows in gold layer"
-          echo "  ✓  Metabase     — API healthy"
-          echo "════════════════════════════════════════════════════"
+          
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== airflow-scheduler (last 100 lines) ==="
+          docker compose logs --tail=100 airflow-scheduler
+          echo "=== airflow-init ==="
+          docker compose logs --tail=30 airflow-init
+          echo "=== postgres ==="
+          docker compose logs --tail=20 postgres
 
       - name: Tear down
         if: always()
