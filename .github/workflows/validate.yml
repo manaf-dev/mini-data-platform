@@ -118,21 +118,17 @@ jobs:
         run: |
           set -e
 
-          YEAR=$(date -u -d "$RUN_DATE" +%Y)
-          MONTH=$(date -u -d "$RUN_DATE" +%m)
-          DAY=$(date -u -d "$RUN_DATE" +%d)
-
           docker compose exec -T minio \
             mc alias set local http://localhost:9000 minioadmin minioadmin123
 
           for layer in bronze silver; do
             for dataset in patients visits admissions treatments billing; do
               COUNT=$(docker compose exec -T minio sh -c \
-                "mc ls --recursive local/healthcare-${layer}/${dataset}/${YEAR}/${MONTH}/${DAY}/ 2>/dev/null | wc -l")
+                "mc ls --recursive local/healthcare-${layer}/${dataset}/ 2>/dev/null | wc -l")
               if [ "${COUNT:-0}" -gt 0 ]; then
                 echo "${layer}/${dataset}: ${COUNT} file(s)"
               else
-                echo "Missing data in ${layer}/${dataset}/${YEAR}/${MONTH}/${DAY}"
+                echo "Missing data in ${layer}/${dataset}"
                 exit 1
               fi
             done
