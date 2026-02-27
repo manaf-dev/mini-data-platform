@@ -23,14 +23,13 @@ jobs:
           cat > .env << EOF
           POSTGRES_HOST=postgres
           POSTGRES_PORT=5432
-          POSTGRES_USER=ecom
-          POSTGRES_PASSWORD=ecom_secret
-          POSTGRES_DB=ecomdb
+          POSTGRES_USER=healthcare_admin
+          POSTGRES_PASSWORD=healthcare_secret
+          POSTGRES_DB=healthcare_analytics
           AIRFLOW_DB=airflow
-          AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfd33Q=
           MINIO_ROOT_USER=minioadmin
           MINIO_ROOT_PASSWORD=minioadmin123
-          MINIO_ENDPOINT=http://minio:9000
+          MINIO_ENDPOINT=minio:9000
           MINIO_ACCESS_KEY=minioadmin
           MINIO_SECRET_KEY=minioadmin123
           MINIO_BUCKET_BRONZE=healthcare-bronze
@@ -40,8 +39,8 @@ jobs:
           MB_DB_TYPE=postgres
           MB_DB_DBNAME=metabase
           MB_DB_PORT=5432
-          MB_DB_USER=ecom
-          MB_DB_PASS=ecom_secret
+          MB_DB_USER=healthcare_admin
+          MB_DB_PASS=healthcare_secret
           MB_DB_HOST=postgres
           MB_ADMIN_EMAIL=admin@healthcare.local
           MB_ADMIN_PASSWORD=admin1234!
@@ -61,6 +60,13 @@ jobs:
           echo "Waiting 120s for all services to initialise..."
           sleep 120
 
+      - name: Apply warehouse DDL
+        run: |
+          docker compose exec -T postgres \
+            psql -U healthcare_admin -d healthcare_analytics -v ON_ERROR_STOP=1 \
+            < sql/ddl.sql
+          echo "✓ Applied sql/ddl.sql"
+
       # STEP 1: Generate sample CSVs
       - name: Generate sample healthcare CSVs
         run: |
@@ -75,25 +81,38 @@ jobs:
             airflow dags trigger healthcare_bronze_ingestion_v1
           echo "✓ Bronze DAG triggered"
 
-      - name: Wait for bronze DAG to complete (60s)
-        run: sleep 60
-
       # STEP 3: Verify MinIO has bronze files
       - name: Validate MinIO — bronze files exist
         run: |
           docker compose exec -T minio \
             mc alias set local http://localhost:9000 minioadmin minioadmin123
 
-          for dataset in patients visits admissions treatments billing; do
-            COUNT=$(docker compose exec -T minio \
-              mc ls --recursive local/healthcare-bronze/${dataset}/ \
-              | wc -l)
-            if [ "$COUNT" -gt "0" ]; then
-              echo "  ✓ bronze/${dataset}: ${COUNT} file(s)"
-            else
-              echo "  ✗ bronze/${dataset}: NO FILES FOUND"
+          for attempt in $(seq 1 30); do
+            missing=0
+            for dataset in patients visits admissions treatments billing; do
+              COUNT=$(docker compose exec -T minio \
+                mc ls --recursive local/healthcare-bronze/${dataset}/ \
+                | wc -l)
+              if [ "$COUNT" -gt "0" ]; then
+                echo "  ✓ bronze/${dataset}: ${COUNT} file(s)"
+              else
+                echo "  … bronze/${dataset}: pending"
+                missing=1
+              fi
+            done
+
+            if [ "$missing" -eq 0 ]; then
+              echo "Bronze data is ready."
+              break
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "  ✗ bronze data not ready after 30 attempts"
               exit 1
             fi
+
+            echo "Bronze data not ready yet (attempt ${attempt}/30). Waiting 15s..."
+            sleep 15
           done
 
       # STEP 4: Trigger silver DAG
@@ -103,22 +122,35 @@ jobs:
             airflow dags trigger healthcare_silver_pipeline_v1
           echo "✓ Silver DAG triggered"
 
-      - name: Wait for silver DAG to complete (90s)
-        run: sleep 90
-
       # STEP 5: Verify MinIO has silver files 
       - name: Validate MinIO — silver files exist
         run: |
-          for dataset in patients visits admissions treatments billing; do
-            COUNT=$(docker compose exec -T minio \
-              mc ls --recursive local/healthcare-silver/${dataset}/ \
-              | wc -l)
-            if [ "$COUNT" -gt "0" ]; then
-              echo "  ✓ silver/${dataset}: ${COUNT} file(s)"
-            else
-              echo "  ✗ silver/${dataset}: NO FILES FOUND"
+          for attempt in $(seq 1 30); do
+            missing=0
+            for dataset in patients visits admissions treatments billing; do
+              COUNT=$(docker compose exec -T minio \
+                mc ls --recursive local/healthcare-silver/${dataset}/ \
+                | wc -l)
+              if [ "$COUNT" -gt "0" ]; then
+                echo "  ✓ silver/${dataset}: ${COUNT} file(s)"
+              else
+                echo "  … silver/${dataset}: pending"
+                missing=1
+              fi
+            done
+
+            if [ "$missing" -eq 0 ]; then
+              echo "Silver data is ready."
+              break
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "  ✗ silver data not ready after 30 attempts"
               exit 1
             fi
+
+            echo "Silver data not ready yet (attempt ${attempt}/30). Waiting 15s..."
+            sleep 15
           done
 
       # STEP 6: Trigger gold DAG
@@ -152,7 +184,7 @@ jobs:
           for table, min_rows in tables.items():
               result = subprocess.run(
                   ["docker", "compose", "exec", "-T", "postgres",
-                   "psql", "-U", "ecom", "-d", "ecomdb", "-t", "-c",
+                   "psql", "-U", "healthcare_admin", "-d", "healthcare_analytics", "-t", "-c",
                    f"SELECT COUNT(*) FROM {table};"],
                   capture_output=True, text=True
               )
@@ -171,7 +203,7 @@ jobs:
       # STEP 8: Data sanity checks
       - name: Validate data sanity — no negative revenue, valid dates
         run: |
-          docker compose exec -T postgres psql -U ecom -d ecomdb -t -c "
+          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
             SELECT COUNT(*) FROM billing WHERE total_amount < 0;
           " | python3 -c "
           import sys
@@ -182,7 +214,7 @@ jobs:
           print('✓ No negative billing amounts in gold layer')
           "
 
-          docker compose exec -T postgres psql -U ecom -d ecomdb -t -c "
+          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
             SELECT COUNT(*) FROM visits
             WHERE visit_end_ts < visit_start_ts;
           " | python3 -c "
@@ -194,7 +226,7 @@ jobs:
           print('✓ No visits with end_ts before start_ts')
           "
 
-          docker compose exec -T postgres psql -U ecom -d ecomdb -t -c "
+          docker compose exec -T postgres psql -U healthcare_admin -d healthcare_analytics -t -c "
             SELECT COUNT(*) FROM admissions
             WHERE discharge_ts < admit_ts;
           " | python3 -c "
