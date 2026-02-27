@@ -22,7 +22,6 @@ jobs:
           POSTGRES_PASSWORD=healthcare_secret
           POSTGRES_DB=healthcare_analytics
           AIRFLOW_DB=airflow
-          AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfd33Q=
           MINIO_ROOT_USER=minioadmin
           MINIO_ROOT_PASSWORD=minioadmin123
           MINIO_ENDPOINT=minio:9000
