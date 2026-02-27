@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _partition_date(**context):
-    return context["data_interval_start"].replace(tzinfo=None).date()
+    return context["logical_date"].replace(tzinfo=None).date()
 
 
 def run_data_generator(**context):

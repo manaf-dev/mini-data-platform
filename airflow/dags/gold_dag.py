@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def _partition_date(context: dict) -> datetime:
-    return context["data_interval_start"].replace(tzinfo=None)
+    return context["logical_date"].replace(tzinfo=None)
 
 
 def load_patients(**context):

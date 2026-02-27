@@ -76,6 +76,12 @@ jobs:
             -v ON_ERROR_STOP=1 < sql/ddl.sql
           echo "✓ DDL applied"
 
+      - name: Unpause bronze DAG
+        run: |
+          docker compose exec -T airflow-scheduler \
+            airflow dags unpause healthcare_bronze_ingestion_v1
+          echo "✓ Bronze DAG unpaused"
+
       - name: Trigger bronze ingestion DAG
         run: |
           docker compose exec -T airflow-scheduler \
