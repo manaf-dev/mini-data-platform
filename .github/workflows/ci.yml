@@ -38,10 +38,10 @@ jobs:
         run: |
           cp .env.example .env
           cat >> .env << 'EOF'
-          NUM_PATIENTS=100
-          NUM_VISITS=300
-          NUM_ADMISSIONS=60
-          NUM_TREATMENTS=500
+          NUM_PATIENTS=1000
+          NUM_VISITS=3000
+          NUM_ADMISSIONS=600
+          NUM_TREATMENTS=5000
           AIRFLOW_UID=50000
           AIRFLOW_GID=0
           MINIO_BUCKET_BRONZE=healthcare-bronze
